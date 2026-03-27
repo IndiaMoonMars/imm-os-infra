@@ -135,6 +135,44 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # ── Sensor Simulator (replaces real RPi/Jetson until hardware arrives) ─
+
+  sensor-sim:
+    build:
+      context: ../imm-os-edge/simulator
+      dockerfile: Dockerfile
+    container_name: imm-sensor-sim
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      PUBLISH_INTERVAL_S: 5
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Telemetry Worker (MQTT → InfluxDB bridge) ──────────────────
+
+  telemetry-worker:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-telemetry-worker
+    command: ["python", "-u", "services/telemetry_worker.py"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+      INFLUX_BUCKET: telemetry
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Application stubs (Phase 0 — replaced by real images in Phase 1) ──
 
   backend:
