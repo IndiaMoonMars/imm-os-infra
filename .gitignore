@@ -1,0 +1,32 @@
+# ── Secrets — NEVER commit these ────────────────────────────────
+.env
+*.pem
+*.key
+*.crt
+kubeconfig
+.kube/
+
+# ── K3s runtime ──────────────────────────────────────────────────
+k3s/data/
+k3s/token
+
+# ── Mosquitto runtime data ───────────────────────────────────────
+mosquitto/data/
+mosquitto/log/
+
+# ── Terraform ────────────────────────────────────────────────────
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+
+# ── Ansible ──────────────────────────────────────────────────────
+*.retry
+ansible/.vault_pass
+
+# ── OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
