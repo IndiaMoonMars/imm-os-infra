@@ -1,0 +1,81 @@
+---
+# Role: docker
+# Installs Docker Engine + Docker Compose v2 plugin.
+# Covers Phase 0 Steps 2 and 3.
+#
+# Acceptance criteria:
+#   Step 2: docker ps returns empty list without error
+#   Step 3: docker compose version returns 2.x
+
+- name: Remove old Docker packages if present
+  apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+    ignore_errors: true
+
+- name: Add Docker GPG key
+  shell: |
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+      | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/docker-archive-keyring.gpg
+
+- name: Add Docker APT repository
+  shell: |
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+      https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" \
+      > /etc/apt/sources.list.d/docker.list
+  args:
+    creates: /etc/apt/sources.list.d/docker.list
+
+- name: Update apt cache after adding Docker repo
+  apt:
+    update_cache: true
+
+- name: Install Docker Engine + Compose plugin
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+
+- name: Ensure Docker daemon is started and enabled
+  service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add ansible user to docker group (no sudo for docker)
+  user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: true
+
+- name: Verify — docker ps returns empty list
+  command: docker ps
+  become: false
+  register: docker_ps
+  changed_when: false
+
+- name: Verify — docker compose version is 2.x
+  command: docker compose version
+  become: false
+  register: compose_ver
+  changed_when: false
+
+- name: Assert Docker Compose v2
+  assert:
+    that:
+      - "'v2' in compose_ver.stdout or 'Docker Compose version 2' in compose_ver.stdout"
+    fail_msg: "Docker Compose v2 not found: {{ compose_ver.stdout }}"
+    success_msg: "Docker Compose v2 ✓"

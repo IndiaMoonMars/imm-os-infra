@@ -1,0 +1,59 @@
+---
+# Role: common
+# Brings Ubuntu 22.04 to a clean, updated baseline state.
+# Covers Phase 0 Step 1 acceptance criteria: ssh login works; uname -r >= 5.15
+
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+    autoremove: true
+    autoclean: true
+
+- name: Install essential packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - net-tools
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - python3-pip
+      - ntp
+    state: present
+
+- name: Ensure NTP is running (time sync for telemetry timestamps)
+  service:
+    name: ntp
+    state: started
+    enabled: true
+
+- name: Set timezone to UTC (standardise all IMM nodes)
+  timezone:
+    name: UTC
+
+- name: Ensure SSH is enabled
+  service:
+    name: ssh
+    state: started
+    enabled: true
+
+- name: Print kernel version (acceptance criterion: 5.15+)
+  command: uname -r
+  register: kernel_ver
+  changed_when: false
+
+- name: Assert kernel >= 5.15
+  assert:
+    that:
+      - "kernel_ver.stdout is version('5.15', '>=')"
+    fail_msg: "Kernel {{ kernel_ver.stdout }} is too old — need 5.15+"
+    success_msg: "Kernel {{ kernel_ver.stdout }} ✓"

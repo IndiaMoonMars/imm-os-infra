@@ -1,0 +1,29 @@
+---
+# IMM-OS Infrastructure — Ansible Site Playbook
+# Provisions Ubuntu 22.04 LTS on:
+#   - dev server (K3s + Docker)
+#   - RPi nodes (Docker only, for edge containers)
+#   - Jetson (Docker only, for AI edge)
+#
+# Usage:
+#   ansible-playbook site.yml -i inventory.ini --ask-become-pass
+#
+# First run: edit inventory.ini with your actual IPs.
+
+- name: Common setup — all hosts
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Install Docker — all hosts
+  hosts: all
+  become: true
+  roles:
+    - docker
+
+- name: Install K3s — dev server only
+  hosts: devserver
+  become: true
+  roles:
+    - k3s

@@ -1,0 +1,63 @@
+---
+# Role: k3s
+# Installs K3s single-node lightweight Kubernetes cluster on the dev server.
+# Covers Phase 0 Step 4.
+#
+# Acceptance criteria:
+#   kubectl get nodes → dev server listed as Ready
+
+- name: Check if K3s is already installed
+  stat:
+    path: /usr/local/bin/k3s
+  register: k3s_bin
+
+- name: Install K3s (single-node server mode)
+  shell: |
+    curl -sfL https://get.k3s.io | sh -s - \
+      --write-kubeconfig-mode 644 \
+      --disable traefik
+  when: not k3s_bin.stat.exists
+
+- name: Ensure K3s service is started and enabled
+  service:
+    name: k3s
+    state: started
+    enabled: true
+
+- name: Wait for K3s API to become ready
+  wait_for:
+    port: 6443
+    delay: 5
+    timeout: 120
+
+- name: Copy kubeconfig for ansible user
+  copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "/home/{{ ansible_user }}/.kube/config"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+    remote_src: true
+
+- name: Ensure .kube directory exists for ansible user
+  file:
+    path: "/home/{{ ansible_user }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0755'
+
+- name: Verify — kubectl get nodes shows Ready
+  command: kubectl get nodes
+  become: false
+  environment:
+    KUBECONFIG: "/home/{{ ansible_user }}/.kube/config"
+  register: kubectl_nodes
+  changed_when: false
+  retries: 6
+  delay: 10
+  until: "'Ready' in kubectl_nodes.stdout"
+
+- name: Print kubectl nodes output
+  debug:
+    msg: "{{ kubectl_nodes.stdout }}"
