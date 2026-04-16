@@ -35,7 +35,16 @@ CREATE TABLE IF NOT EXISTS alert_history (
     acknowledged BOOLEAN DEFAULT FALSE
 );
 
+CREATE TABLE IF NOT EXISTS command_history (
+    id BIGSERIAL PRIMARY KEY,
+    operator_id VARCHAR(100) NOT NULL,
+    command_text TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'SENT',
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(event_timestamp);
 CREATE INDEX IF NOT EXISTS idx_sensor_config_zone ON sensor_config(zone);
 CREATE INDEX IF NOT EXISTS idx_alert_history_timestamp ON alert_history(alert_timestamp);
+CREATE INDEX IF NOT EXISTS idx_command_history_time ON command_history(sent_at);

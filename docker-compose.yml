@@ -262,10 +262,12 @@ services:
     restart: unless-stopped
 
   openmct:
-    image: traefik/whoami
-    container_name: imm-openmct-stub
-    hostname: openmct
-    command: --port=8080
+    build:
+      context: ../imm-os-openmct
+      dockerfile: Dockerfile
+    container_name: imm-openmct
+    ports:
+      - "8080:8080"
     restart: unless-stopped
 
   # ── Reverse proxy ──────────────────────────────────────────────
