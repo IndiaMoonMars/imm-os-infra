@@ -82,3 +82,98 @@ CREATE INDEX IF NOT EXISTS idx_command_history_time ON command_history(sent_at);
 CREATE INDEX IF NOT EXISTS idx_eva_plans_status ON eva_plans(status);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_tag ON tool_checkout(rfid_tag);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_eva ON tool_checkout(eva_plan_id);
+
+-- ── Phase 7: Crew Communications ──────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS threads (
+    id BIGSERIAL PRIMARY KEY,
+    subject VARCHAR(255) NOT NULL,
+    created_by VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id BIGSERIAL PRIMARY KEY,
+    thread_id BIGINT REFERENCES threads(id) ON DELETE CASCADE,
+    sender_id VARCHAR(100) NOT NULL,
+    recipient_group VARCHAR(20) NOT NULL CHECK (recipient_group IN ('astro','mcc','all')),
+    subject VARCHAR(255),
+    body TEXT NOT NULL,
+    delay_seconds NUMERIC DEFAULT 0,
+    deliver_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered BOOLEAN DEFAULT FALSE,
+    read_by TEXT[] DEFAULT '{}',
+    mission_day INTEGER DEFAULT 1,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id BIGSERIAL PRIMARY KEY,
+    message_id BIGINT REFERENCES messages(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    mime_type VARCHAR(100),
+    storage_path TEXT NOT NULL,
+    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS journals (
+    id BIGSERIAL PRIMARY KEY,
+    author_id VARCHAR(100) NOT NULL,
+    title VARCHAR(255),
+    body TEXT,
+    media_path TEXT,
+    media_type VARCHAR(10) CHECK (media_type IN ('text','voice','video')),
+    mission_day INTEGER DEFAULT 1,
+    tags TEXT[] DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS briefings (
+    id BIGSERIAL PRIMARY KEY,
+    created_by VARCHAR(100) NOT NULL,
+    mission_day INTEGER NOT NULL,
+    objectives TEXT,
+    eclss_snapshot JSONB DEFAULT '{}',
+    eva_summary TEXT,
+    assignments JSONB DEFAULT '[]',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS briefing_acks (
+    id BIGSERIAL PRIMARY KEY,
+    briefing_id BIGINT NOT NULL REFERENCES briefings(id) ON DELETE CASCADE,
+    crew_id VARCHAR(100) NOT NULL,
+    item_index INTEGER NOT NULL,
+    acked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (briefing_id, crew_id, item_index)
+);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id VARCHAR(100) NOT NULL,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS video_logs (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    title VARCHAR(255),
+    media_path TEXT NOT NULL,
+    mime_type VARCHAR(50) DEFAULT 'video/mp4',
+    mission_day INTEGER DEFAULT 1,
+    duration_seconds NUMERIC,
+    keywords TEXT[] DEFAULT '{}',
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Comms indexes
+CREATE INDEX IF NOT EXISTS idx_messages_deliver_at ON messages(deliver_at);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_group);
+CREATE INDEX IF NOT EXISTS idx_journals_author ON journals(author_id);
+CREATE INDEX IF NOT EXISTS idx_journals_mission_day ON journals(mission_day);
+CREATE INDEX IF NOT EXISTS idx_briefings_mission_day ON briefings(mission_day);
+CREATE INDEX IF NOT EXISTS idx_video_logs_mission_day ON video_logs(mission_day);

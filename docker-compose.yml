@@ -274,6 +274,30 @@ services:
       - postgres
     restart: unless-stopped
 
+  comms-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-comms-api
+    command: ["uvicorn", "services.comms_api:app", "--host", "0.0.0.0", "--port", "8005"]
+    ports:
+      - "8005:8005"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      TIME_SERVICE_URL: http://time-service:8002
+      ECLSS_API_URL: http://eclss-api:8003
+      MEDIA_DIR: /app/media
+    volumes:
+      - comms_media:/app/media
+    depends_on:
+      - postgres
+      - time-service
+      - eclss-api
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
@@ -345,3 +369,4 @@ volumes:
   zookeeper_log:
   kafka_data:
   redis_data:
+  comms_media:
