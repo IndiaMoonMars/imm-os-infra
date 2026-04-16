@@ -177,3 +177,72 @@ CREATE INDEX IF NOT EXISTS idx_journals_author ON journals(author_id);
 CREATE INDEX IF NOT EXISTS idx_journals_mission_day ON journals(mission_day);
 CREATE INDEX IF NOT EXISTS idx_briefings_mission_day ON briefings(mission_day);
 CREATE INDEX IF NOT EXISTS idx_video_logs_mission_day ON video_logs(mission_day);
+
+-- ── Phase 8: Work Scheduling & Procedures ────────────────────────
+
+CREATE TABLE IF NOT EXISTS projects (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    owner_id VARCHAR(100) NOT NULL,
+    status VARCHAR(20) DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','PAUSED','COMPLETE','ARCHIVED')),
+    start_date DATE,
+    end_date DATE,
+    mission_day_start INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id BIGSERIAL PRIMARY KEY,
+    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    parent_task_id BIGINT REFERENCES tasks(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    assignee_id VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING','IN_PROGRESS','BLOCKED','COMPLETE','CANCELLED')),
+    priority VARCHAR(10) DEFAULT 'NORMAL' CHECK (priority IN ('LOW','NORMAL','HIGH','CRITICAL')),
+    deadline TIMESTAMP WITH TIME ZONE,
+    mission_day INTEGER DEFAULT 1,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS milestones (
+    id BIGSERIAL PRIMARY KEY,
+    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    target_date DATE NOT NULL,
+    reached BOOLEAN DEFAULT FALSE,
+    reached_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE IF NOT EXISTS procedures (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100),
+    description TEXT,
+    version VARCHAR(20) DEFAULT '1.0',
+    steps JSONB NOT NULL DEFAULT '[]',
+    created_by VARCHAR(100),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS procedure_runs (
+    id BIGSERIAL PRIMARY KEY,
+    procedure_id BIGINT NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
+    crew_id VARCHAR(100) NOT NULL,
+    task_id BIGINT REFERENCES tasks(id),
+    status VARCHAR(20) DEFAULT 'IN_PROGRESS' CHECK (status IN ('IN_PROGRESS','COMPLETE','ABORTED')),
+    current_step INTEGER DEFAULT 0,
+    step_timestamps JSONB DEFAULT '{}',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Scheduling indexes
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_procedure_runs_status ON procedure_runs(status);
+CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(target_date);

@@ -298,6 +298,27 @@ services:
       - eclss-api
     restart: unless-stopped
 
+  scheduling-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-scheduling-api
+    command: ["uvicorn", "services.scheduling_api:app", "--host", "0.0.0.0", "--port", "8006"]
+    ports:
+      - "8006:8006"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      TIME_SERVICE_URL: http://time-service:8002
+      COMMS_API_URL: http://comms-api:8005
+    depends_on:
+      - postgres
+      - time-service
+      - comms-api
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
