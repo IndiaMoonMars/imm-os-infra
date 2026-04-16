@@ -319,6 +319,38 @@ services:
       - comms-api
     restart: unless-stopped
 
+  medical-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-medical-api
+    command: ["uvicorn", "services.medical_api:app", "--host", "0.0.0.0", "--port", "8007"]
+    ports:
+      - "8007:8007"
+    environment:
+      DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
+      COMMS_URL: http://comms-api:8005
+    depends_on:
+      - postgres
+      - comms-api
+    restart: unless-stopped
+
+  psych-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-psych-api
+    command: ["uvicorn", "services.psychology_api:app", "--host", "0.0.0.0", "--port", "8008"]
+    ports:
+      - "8008:8008"
+    environment:
+      DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
+      COMMS_URL: http://comms-api:8005
+    depends_on:
+      - postgres
+      - comms-api
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
