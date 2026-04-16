@@ -257,6 +257,23 @@ services:
       - "8003:8003"
     restart: unless-stopped
 
+  eva-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-eva-api
+    command: ["uvicorn", "services.eva_api:app", "--host", "0.0.0.0", "--port", "8004"]
+    ports:
+      - "8004:8004"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
