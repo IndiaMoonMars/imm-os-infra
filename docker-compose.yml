@@ -22,6 +22,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d imm_db"]
       interval: 10s
@@ -175,11 +176,59 @@ services:
 
   # ── Application stubs (Phase 0 — replaced by real images in Phase 1) ──
 
+  telemetry-ingest:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-telemetry-ingest
+    command: ["uvicorn", "services.telemetry_ingest:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_started
+    restart: unless-stopped
+
+  telemetry-processor:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-telemetry-processor
+    command: ["python", "-u", "services/telemetry_processor.py"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+    depends_on:
+      kafka:
+        condition: service_started
+      influxdb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mqtt-kafka-bridge:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-mqtt-kafka-bridge
+    command: ["python", "-u", "services/mqtt_to_kafka_bridge.py"]
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
     hostname: backend
-    command: --port=8000
+    command: --port=8080
     restart: unless-stopped
 
   frontend:
@@ -215,6 +264,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: imm-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      influxdb:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
