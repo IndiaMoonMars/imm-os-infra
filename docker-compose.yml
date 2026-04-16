@@ -67,6 +67,15 @@ services:
       retries: 5
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    container_name: imm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
   # ── Message queue ──────────────────────────────────────────────
 
   zookeeper:
@@ -224,6 +233,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  time-service:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-time-service
+    command: ["uvicorn", "services.time_service.api:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
@@ -290,3 +313,4 @@ volumes:
   zookeeper_data:
   zookeeper_log:
   kafka_data:
+  redis_data:
