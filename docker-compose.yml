@@ -247,6 +247,16 @@ services:
       - redis
     restart: unless-stopped
 
+  eclss-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-eclss-api
+    command: ["uvicorn", "services.eclss_api:app", "--host", "0.0.0.0", "--port", "8003"]
+    ports:
+      - "8003:8003"
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
@@ -255,10 +265,12 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: traefik/whoami
-    container_name: imm-frontend-stub
-    hostname: frontend
-    command: --port=3000
+    build:
+      context: ../imm-os-frontend
+      dockerfile: Dockerfile
+    container_name: imm-frontend
+    ports:
+      - "3000:3000"
     restart: unless-stopped
 
   openmct:
