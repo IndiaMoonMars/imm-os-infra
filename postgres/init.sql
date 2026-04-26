@@ -246,3 +246,143 @@ CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_procedure_runs_status ON procedure_runs(status);
 CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(target_date);
+
+-- ── Phase 9: Medical & Health ─────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS medical_readings (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- 'hr', 'bp', 'spo2', 'glucose', 'temp', 'weight', 'ecg'
+    value JSONB NOT NULL,
+    mission_day INTEGER DEFAULT 1,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS food_items (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    calories_per_100g NUMERIC NOT NULL,
+    protein_g NUMERIC NOT NULL,
+    carbs_g NUMERIC NOT NULL,
+    fat_g NUMERIC NOT NULL,
+    expiry_days INTEGER DEFAULT 365
+);
+
+CREATE TABLE IF NOT EXISTS food_log (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    food_item_id INTEGER REFERENCES food_items(id),
+    name_override VARCHAR(255),
+    quantity_g NUMERIC NOT NULL,
+    mission_day INTEGER DEFAULT 1,
+    logged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS medication_log (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    medication_name VARCHAR(255) NOT NULL,
+    dosage VARCHAR(100),
+    mission_day INTEGER DEFAULT 1,
+    taken_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS medical_evaluations (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    evaluator_id VARCHAR(100) NOT NULL,
+    diagnosis TEXT,
+    treatment_plan TEXT,
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS workout_log (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    exercise_type VARCHAR(100),
+    duration_minutes INTEGER,
+    intensity_score INTEGER CHECK (intensity_score BETWEEN 1 AND 10),
+    mission_day INTEGER DEFAULT 1,
+    logged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS questionnaire_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL, -- e.g. 'NASA-TLX', 'PSQI'
+    structure JSONB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS questionnaire_responses (
+    id BIGSERIAL PRIMARY KEY,
+    template_id INTEGER REFERENCES questionnaire_templates(id),
+    crew_id VARCHAR(100) NOT NULL,
+    responses JSONB NOT NULL,
+    computed_score NUMERIC,
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── Phase 10: Psychology & Sociodynamics ────────────────────────
+
+CREATE TABLE IF NOT EXISTS sleep_log (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    onset_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    wake_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    duration_minutes INTEGER,
+    quality_score INTEGER CHECK (quality_score BETWEEN 1 AND 10),
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mood_checkins (
+    id BIGSERIAL PRIMARY KEY,
+    crew_id VARCHAR(100) NOT NULL,
+    valence INTEGER NOT NULL CHECK (valence BETWEEN 1 AND 5), -- 1: Sad, 5: Happy
+    arousal INTEGER NOT NULL CHECK (arousal BETWEEN 1 AND 5), -- 1: Low, 5: High
+    tags TEXT[] DEFAULT '{}',
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sociogram_ratings (
+    id BIGSERIAL PRIMARY KEY,
+    rater_id VARCHAR(100) NOT NULL,
+    ratee_id VARCHAR(100) NOT NULL,
+    comfort_score INTEGER NOT NULL CHECK (comfort_score BETWEEN 1 AND 5),
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (rater_id, ratee_id, mission_day)
+);
+
+-- ── Phase 11: AI & Autonomous Operations ────────────────────────
+
+CREATE TABLE IF NOT EXISTS ai_insights (
+    id BIGSERIAL PRIMARY KEY,
+    system_area VARCHAR(50) NOT NULL, -- 'eclss', 'power', 'crew', 'eva'
+    insight_type VARCHAR(50) NOT NULL, -- 'anomaly', 'prediction', 'recommendation'
+    severity VARCHAR(20) DEFAULT 'info', -- 'info', 'warning', 'critical'
+    summary TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}', -- stores z-scores, correlation data, model version
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS autonomous_actions (
+    id BIGSERIAL PRIMARY KEY,
+    insight_id BIGINT REFERENCES ai_insights(id),
+    action_type VARCHAR(50) NOT NULL, -- 'hvac_adjust', 'power_shed', 'lighting_dim'
+    command_issued TEXT NOT NULL,
+    reasoning TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'EXECUTED', -- 'EXECUTED', 'PENDING_APPROVAL', 'OVERRIDDEN'
+    crew_override_by VARCHAR(100),
+    mission_day INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Indexes
+CREATE INDEX IF NOT EXISTS idx_medical_readings_crew ON medical_readings(crew_id);
+CREATE INDEX IF NOT EXISTS idx_ai_insights_mission_day ON ai_insights(mission_day);
+CREATE INDEX IF NOT EXISTS idx_ai_insights_severity ON ai_insights(severity);
+CREATE INDEX IF NOT EXISTS idx_autonomous_actions_status ON autonomous_actions(status);

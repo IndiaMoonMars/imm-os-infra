@@ -351,6 +351,56 @@ services:
       - comms-api
     restart: unless-stopped
 
+  ai-processor:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-ai-processor
+    command: ["python", "services/ai_processor.py"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: imm-super-secret-token
+      POSTGRES_HOST: postgres
+    depends_on:
+      kafka:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mission-assistant:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-mission-assistant
+    command: ["uvicorn", "services.mission_assistant_api:app", "--host", "0.0.0.0", "--port", "8009"]
+    ports:
+      - "8009:8009"
+    environment:
+      DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
+      INFLUX_URL: http://influxdb:8086
+    depends_on:
+      - postgres
+      - influxdb
+    restart: unless-stopped
+
+  auto-control:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-auto-control
+    command: ["python", "services/auto_control_service.py"]
+    environment:
+      ECLSS_URL: http://eclss-api:8003
+      POSTGRES_HOST: postgres
+    depends_on:
+      - postgres
+      - eclss-api
+    restart: unless-stopped
+
   backend:
     image: traefik/whoami
     container_name: imm-backend-stub
