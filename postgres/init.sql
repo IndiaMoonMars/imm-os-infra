@@ -1,5 +1,18 @@
 -- IMM-OS PostgreSQL Schema: Phase 2
 
+-- Create role and assign permissions for microservices
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'imm_user') THEN
+        CREATE ROLE imm_user WITH LOGIN PASSWORD 'imm_pass';
+    END IF;
+END
+$$;
+GRANT ALL PRIVILEGES ON DATABASE imm_db TO imm_user;
+-- Ensure future tables/sequences inherit permissions in public schema
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO imm_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO imm_user;
+
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,

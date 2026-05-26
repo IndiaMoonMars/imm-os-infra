@@ -140,7 +140,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/auth/health/ready || exit 1"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
       interval: 20s
       timeout: 10s
       retries: 10
@@ -362,7 +362,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
-      INFLUX_TOKEN: imm-super-secret-token
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
       POSTGRES_HOST: postgres
     depends_on:
       kafka:
@@ -425,7 +425,7 @@ services:
       dockerfile: Dockerfile
     container_name: imm-openmct
     ports:
-      - "8080:8080"
+      - "8082:8080"
     restart: unless-stopped
 
   # ── Reverse proxy ──────────────────────────────────────────────
@@ -457,6 +457,7 @@ services:
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
