@@ -96,6 +96,50 @@ CREATE INDEX IF NOT EXISTS idx_eva_plans_status ON eva_plans(status);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_tag ON tool_checkout(rfid_tag);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_eva ON tool_checkout(eva_plan_id);
 
+-- ── Phase 5: ECLSS ────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS eclss_lighting_state (
+    zone VARCHAR(50) PRIMARY KEY,
+    brightness SMALLINT NOT NULL CHECK (brightness BETWEEN 0 AND 100),
+    kelvin SMALLINT NOT NULL CHECK (kelvin BETWEEN 2000 AND 6500),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS waste_events (
+    id BIGSERIAL PRIMARY KEY,
+    weight_kg DOUBLE PRECISION NOT NULL,
+    rfid_tag VARCHAR(100) NOT NULL,
+    container VARCHAR(100) NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shower_events (
+    id BIGSERIAL PRIMARY KEY,
+    duration_seconds DOUBLE PRECISION NOT NULL,
+    estimated_liters DOUBLE PRECISION NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS water_flow_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_ml DOUBLE PRECISION NOT NULL,
+    daily_total_ml DOUBLE PRECISION NOT NULL,
+    source VARCHAR(100) NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS biolab_readings (
+    id BIGSERIAL PRIMARY KEY,
+    ph_level DOUBLE PRECISION NOT NULL,
+    water_temp_c DOUBLE PRECISION NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_waste_events_time ON waste_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_shower_events_time ON shower_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_water_flow_events_time ON water_flow_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_biolab_readings_time ON biolab_readings(recorded_at);
+
 -- ── Phase 7: Crew Communications ──────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS threads (
