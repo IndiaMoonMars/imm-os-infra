@@ -7,6 +7,14 @@
 #  App stubs: backend · frontend · openmct  (replaced in Phase 1)
 # ════════════════════════════════════════════════════════════════
 
+# Keycloak token verification + internal service-to-service auth,
+# merged into every service that checks tokens or calls another service
+x-imm-auth-env: &imm-auth-env
+  KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://imm.local/auth/realms/IndiaMoonMars}
+  KEYCLOAK_JWKS_URL: http://keycloak:8080/auth/realms/IndiaMoonMars/protocol/openid-connect/certs
+  KEYCLOAK_AUDIENCE: imm-api
+  IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+
 services:
 
   # ── Data stores ────────────────────────────────────────────────
@@ -126,7 +134,10 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: imm-keycloak
-    command: start-dev --http-relative-path=/auth
+    command: start-dev --http-relative-path=/auth --import-realm
+    volumes:
+      # Realm, roles and clients; imported only if the realm does not exist yet
+      - ./keycloak/import:/opt/keycloak/data/import:ro
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
@@ -265,6 +276,7 @@ services:
     ports:
       - "8003:8003"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -287,6 +299,7 @@ services:
     ports:
       - "8004:8004"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -304,6 +317,7 @@ services:
     ports:
       - "8005:8005"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -328,6 +342,7 @@ services:
     ports:
       - "8006:8006"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -349,6 +364,7 @@ services:
     ports:
       - "8007:8007"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       COMMS_URL: http://comms-api:8005
     depends_on:
@@ -365,6 +381,7 @@ services:
     ports:
       - "8008:8008"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       COMMS_URL: http://comms-api:8005
     depends_on:
@@ -413,8 +430,9 @@ services:
       context: ../imm-os-backend
       dockerfile: Dockerfile
     container_name: imm-auto-control
-    command: ["python", "services/auto_control_service.py"]
+    command: ["python", "-m", "services.auto_control_service"]
     environment:
+      <<: *imm-auth-env
       ECLSS_URL: http://eclss-api:8003
       POSTGRES_HOST: postgres
     depends_on:
