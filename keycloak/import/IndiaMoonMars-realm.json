@@ -30,7 +30,7 @@
       },
       {
         "name": "edge_device",
-        "description": "Edge node service account (RPi / Jetson): ECLSS event logs, RFID tool station, telemetry ingest"
+        "description": "Edge node service account (Raspberry Pi): ECLSS event logs, RFID tool station, telemetry ingest"
       }
     ]
   },

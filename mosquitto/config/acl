@@ -1,7 +1,7 @@
 # IMM-OS MQTT topic ACL. Users are created by entrypoint.sh.
 # "read" covers subscribe; anything not listed is denied.
 
-# Edge nodes (RPi / Jetson): sensor + EVA drivers publish, the lighting
+# Edge nodes (Raspberry Pi 4/5): sensor + EVA drivers publish, the lighting
 # listener subscribes to control commands, position_fusion reads EVA fixes,
 # the climate controller (eclss_pid.py) reads its node's temperature/humidity.
 user imm-edge

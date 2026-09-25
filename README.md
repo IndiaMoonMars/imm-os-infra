@@ -39,7 +39,7 @@ container instead (Docker Desktop must be running).
 
 | Variable in `.env` | Used by | Required |
 |---|---|---|
-| `MQTT_EDGE_PASSWORD` | MQTT user `imm-edge` (RPi / Jetson) | yes |
+| `MQTT_EDGE_PASSWORD` | MQTT user `imm-edge` (Raspberry Pi edge nodes) | yes |
 | `MQTT_ECLSS_PASSWORD` | MQTT user `imm-eclss` (eclss-api) | yes |
 | `MQTT_INGEST_PASSWORD` | MQTT user `imm-ingest` (bridge, telemetry worker) | yes |
 | `MQTT_SIM_PASSWORD` | MQTT user `imm-sim` (sensor simulator) | yes |
@@ -56,7 +56,7 @@ update the edge nodes. Which topics each MQTT user may use is in
 - **8883 (TLS)**: the only MQTT port published on the LAN; edge nodes use it.
 - **1883 (plain)**: docker network only, for the stack's own services.
 
-### Each edge node (RPi / Jetson)
+### Each edge node (Raspberry Pi 4 / Pi 5)
 1. Copy `mosquitto/certs/ca.crt` to `/etc/imm-os/mqtt-ca.crt` (not secret).
 2. Copy `imm-os-edge/systemd/edge.env.example` to `/etc/imm-os/edge.env`,
    `chmod 600`, and set:
@@ -86,4 +86,8 @@ MQTT → mqtt-kafka-bridge → telemetry.raw → telemetry-validator → telemet
   `SIM_DISABLED_SENSORS=node-rpi-01:bme280` in `.env` and run
   `docker compose up -d sensor-sim`. The dashboard badge for that value turns
   from **SIM** to **LIVE**.
-- Driver setup: `imm-os-edge/real-sensors/README.md`.
+- The simulator fakes `node-rpi-01` (zone_a), `node-rpi-02` (zone_b) and
+  `node-compute` (the Raspberry Pi 5 compute/power node: `sysmon` health and `bms`).
+  Give real nodes the same IDs, e.g. when the Pi 5 is live:
+  `SIM_DISABLED_SENSORS=node-compute:sysmon,node-compute:bms`.
+- Driver setup and the sensor bring-up tool: `imm-os-edge/real-sensors/README.md`.

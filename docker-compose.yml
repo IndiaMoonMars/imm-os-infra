@@ -172,7 +172,7 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  # ── Sensor Simulator (replaces real RPi/Jetson until hardware arrives) ─
+  # ── Sensor Simulator (replaces real Raspberry Pi nodes until hardware arrives) ─
 
   sensor-sim:
     build:
