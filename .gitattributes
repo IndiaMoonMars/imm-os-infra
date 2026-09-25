@@ -1,0 +1,5 @@
+# Files that run inside Linux containers must keep LF endings, even when the
+# repo is cloned on Windows (a CRLF entrypoint.sh stops the MQTT broker).
+*.sh                 text eol=lf
+mosquitto/config/**  text eol=lf
+.env.example         text eol=lf

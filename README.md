@@ -21,6 +21,22 @@ cd imm-os-infra
 docker compose up -d
 ```
 
+**On Windows**, use the PowerShell versions (no Git Bash needed) in PowerShell
+from the `imm-os-infra` folder:
+
+```powershell
+cd imm-os-infra
+.\scripts\generate-secrets.ps1              # add -Webhook for the sleep webhook
+.\mosquitto\gen-certs.ps1 192.168.1.100     # your PC's IPv4 address from `ipconfig`
+docker compose up -d
+```
+
+If PowerShell says "running scripts is disabled on this system", first run
+`Set-ExecutionPolicy -Scope Process Bypass` (this only affects the current
+window). `gen-certs.ps1` uses the OpenSSL that ships with Git for Windows. If
+OpenSSL isn't installed, it generates the certificates in a temporary Docker
+container instead (Docker Desktop must be running).
+
 | Variable in `.env` | Used by | Required |
 |---|---|---|
 | `MQTT_EDGE_PASSWORD` | MQTT user `imm-edge` (RPi / Jetson) | yes |
