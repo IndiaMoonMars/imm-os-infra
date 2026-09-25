@@ -196,6 +196,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-worker
     command: ["python", "-u", "services/telemetry_worker.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -241,6 +243,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-processor
     command: ["python", "-u", "services/telemetry_processor.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
@@ -259,6 +263,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-mqtt-kafka-bridge
     command: ["python", "-u", "services/mqtt_to_kafka_bridge.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -278,6 +284,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-time-service
     command: ["uvicorn", "services.time_service.api:app", "--host", "0.0.0.0", "--port", "8002"]
+    healthcheck:   # the image default probes :8000; this service listens on 8002
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8002/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8002:8002"
     environment:
@@ -293,6 +305,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-eclss-api
     command: ["uvicorn", "services.eclss_api:app", "--host", "0.0.0.0", "--port", "8003"]
+    healthcheck:   # the image default probes :8000; this service listens on 8003
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8003/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8003:8003"
     environment:
@@ -318,6 +336,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-eva-api
     command: ["uvicorn", "services.eva_api:app", "--host", "0.0.0.0", "--port", "8004"]
+    healthcheck:   # the image default probes :8000; this service listens on 8004
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8004/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8004:8004"
     environment:
@@ -336,6 +360,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-inventory-api
     command: ["uvicorn", "services.inventory_api:app", "--host", "0.0.0.0", "--port", "8010"]
+    healthcheck:   # the image default probes :8000; this service listens on 8010
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8010/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8010:8010"
     environment:
@@ -358,6 +388,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-comms-api
     command: ["uvicorn", "services.comms_api:app", "--host", "0.0.0.0", "--port", "8005"]
+    healthcheck:   # the image default probes :8000; this service listens on 8005
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8005/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8005:8005"
     environment:
@@ -383,6 +419,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-scheduling-api
     command: ["uvicorn", "services.scheduling_api:app", "--host", "0.0.0.0", "--port", "8006"]
+    healthcheck:   # the image default probes :8000; this service listens on 8006
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8006/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8006:8006"
     environment:
@@ -405,6 +447,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-medical-api
     command: ["uvicorn", "services.medical_api:app", "--host", "0.0.0.0", "--port", "8007"]
+    healthcheck:   # the image default probes :8000; this service listens on 8007
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8007/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8007:8007"
     environment:
@@ -422,6 +470,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-psych-api
     command: ["uvicorn", "services.psychology_api:app", "--host", "0.0.0.0", "--port", "8008"]
+    healthcheck:   # the image default probes :8000; this service listens on 8008
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8008/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8008:8008"
     environment:
@@ -441,6 +495,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-ai-processor
     command: ["python", "services/ai_processor.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
@@ -461,6 +517,12 @@ services:
       dockerfile: Dockerfile
     container_name: imm-mission-assistant
     command: ["uvicorn", "services.mission_assistant_api:app", "--host", "0.0.0.0", "--port", "8009"]
+    healthcheck:   # the image default probes :8000; this service listens on 8009
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8009/api/v1/astra/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8009:8009"
     environment:
@@ -478,6 +540,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-auto-control
     command: ["python", "-m", "services.auto_control_service"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       <<: *imm-auth-env
       ECLSS_URL: http://eclss-api:8003
