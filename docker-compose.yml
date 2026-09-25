@@ -185,6 +185,8 @@ services:
       MQTT_USERNAME: imm-sim
       MQTT_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
       PUBLISH_INTERVAL_S: 5
+      # Sensors whose real hardware is online, e.g. node-rpi-01:bme280,node-rpi-01:scd40
+      DISABLED_SENSORS: ${SIM_DISABLED_SENSORS:-}
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -278,6 +280,23 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+    restart: unless-stopped
+
+  # Checks every raw reading against the shared schema:
+  # telemetry.raw → telemetry.validated (or telemetry.deadletter with the reason)
+  telemetry-validator:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-telemetry-validator
+    command: ["python", "-u", "-m", "services.telemetry_validator"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
 
   time-service:

@@ -69,3 +69,21 @@ update the edge nodes. Which topics each MQTT user may use is in
 `mosquitto/certs/ca.key` private: it is only needed to issue a new server
 certificate (`./mosquitto/gen-certs.sh --force ...`), after which every edge node
 needs the new `ca.crt`.
+
+## Telemetry: simulated → real sensors
+
+Edge drivers and the `sensor-sim` container publish the same readings on
+`habitat/sensors/<sensor>/<zone>`, marked `"simulated": true/false`:
+
+```
+MQTT → mqtt-kafka-bridge → telemetry.raw → telemetry-validator → telemetry.validated
+     → telemetry-processor (InfluxDB habitat_sensors + alerts) / realtime WS (OpenMCT)
+```
+
+- Rejected readings go to Kafka `telemetry.deadletter`; the reason is logged by
+  `docker compose logs telemetry-validator`.
+- As each real sensor comes online, stop simulating it: set
+  `SIM_DISABLED_SENSORS=node-rpi-01:bme280` in `.env` and run
+  `docker compose up -d sensor-sim`. The dashboard badge for that value turns
+  from **SIM** to **LIVE**.
+- Driver setup: `imm-os-edge/real-sensors/README.md`.

@@ -19,8 +19,10 @@ topic read habitat/sensors/#
 topic read habitat/eva/#
 topic read imm/habitat/#
 
-# Sensor simulator (development only).
+# Sensor simulator (development only). Publishes the same sensor topics as the
+# edge drivers; its readings are marked "simulated": true.
 user imm-sim
+topic write habitat/sensors/#
 topic write imm/habitat/#
 
 # Container healthcheck (password generated at start, never leaves the container).
