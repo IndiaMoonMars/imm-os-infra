@@ -195,6 +195,13 @@ services:
     command: ["uvicorn", "services.telemetry_ingest:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
     depends_on:
       kafka:
         condition: service_started
@@ -404,10 +411,18 @@ services:
     restart: unless-stopped
 
   backend:
-    image: traefik/whoami
-    container_name: imm-backend-stub
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-backend
     hostname: backend
-    command: --port=8080
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+    depends_on:
+      - influxdb
     restart: unless-stopped
 
   frontend:
@@ -439,6 +454,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - backend
+      - telemetry-ingest
       - frontend
       - openmct
       - keycloak
