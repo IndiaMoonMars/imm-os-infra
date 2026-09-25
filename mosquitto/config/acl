@@ -1,0 +1,28 @@
+# IMM-OS MQTT topic ACL. Users are created by entrypoint.sh.
+# "read" covers subscribe; anything not listed is denied.
+
+# Edge nodes (RPi / Jetson): sensor + EVA drivers publish, the lighting
+# listener subscribes to control commands, position_fusion reads EVA fixes.
+user imm-edge
+topic write habitat/sensors/#
+topic readwrite habitat/eva/#
+topic write imm/habitat/#
+topic read habitat/control/#
+
+# ECLSS API: publishes lighting commands (retained) for the edge.
+user imm-eclss
+topic write habitat/control/lighting/#
+
+# Telemetry pipeline (mqtt_to_kafka_bridge, telemetry_worker): read only.
+user imm-ingest
+topic read habitat/sensors/#
+topic read habitat/eva/#
+topic read imm/habitat/#
+
+# Sensor simulator (development only).
+user imm-sim
+topic write imm/habitat/#
+
+# Container healthcheck (password generated at start, never leaves the container).
+user imm-health
+topic write health

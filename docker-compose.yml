@@ -62,6 +62,13 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: imm-mosquitto
+    # Builds the hashed password file from the env below, then starts the broker
+    entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      MQTT_EDGE_PASSWORD: ${MQTT_EDGE_PASSWORD:?set MQTT_EDGE_PASSWORD in .env}
+      MQTT_ECLSS_PASSWORD: ${MQTT_ECLSS_PASSWORD:?set MQTT_ECLSS_PASSWORD in .env}
+      MQTT_INGEST_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
+      MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
     ports:
       - "1883:1883"
     volumes:
@@ -69,7 +76,7 @@ services:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t health -m ping || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -u imm-health -P \"$$(cat /mosquitto/data/.health_pw)\" -t health -m ping || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -170,6 +177,8 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-sim
+      MQTT_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
       PUBLISH_INTERVAL_S: 5
     depends_on:
       mosquitto:
@@ -187,6 +196,8 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-ingest
+      MQTT_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
       INFLUX_URL: http://influxdb:8086
       INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
       INFLUX_ORG: imm_org
@@ -248,6 +259,8 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-ingest
+      MQTT_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
       KAFKA_BOOTSTRAP: kafka:29092
     depends_on:
       mosquitto:
@@ -287,6 +300,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-imm_db}
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-eclss
+      MQTT_PASSWORD: ${MQTT_ECLSS_PASSWORD:?set MQTT_ECLSS_PASSWORD in .env}
     depends_on:
       postgres:
         condition: service_healthy
