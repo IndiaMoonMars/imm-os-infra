@@ -155,6 +155,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/imm_db
       KC_DB_USERNAME: ${POSTGRES_USER:-admin}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # Serves /auth/health/ready, used by the healthcheck below
+      KC_HEALTH_ENABLED: "true"
       # Substituted into the imm-edge client secret at realm import; required
       IMM_EDGE_CLIENT_SECRET: ${IMM_EDGE_CLIENT_SECRET:?set IMM_EDGE_CLIENT_SECRET in .env (openssl rand -hex 32)}
     ports:
