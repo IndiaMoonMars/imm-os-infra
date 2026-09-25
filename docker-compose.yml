@@ -145,6 +145,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/imm_db
       KC_DB_USERNAME: ${POSTGRES_USER:-admin}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # Substituted into the imm-edge client secret at realm import; required
+      IMM_EDGE_CLIENT_SECRET: ${IMM_EDGE_CLIENT_SECRET:?set IMM_EDGE_CLIENT_SECRET in .env (openssl rand -hex 32)}
     ports:
       - "8080:8080"
     depends_on:
@@ -205,6 +207,7 @@ services:
     container_name: imm-telemetry-ingest
     command: ["uvicorn", "services.telemetry_ingest:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
+      <<: *imm-auth-env
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
       INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
@@ -262,6 +265,7 @@ services:
     ports:
       - "8002:8002"
     environment:
+      <<: *imm-auth-env
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - redis
@@ -384,6 +388,8 @@ services:
       <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       COMMS_URL: http://comms-api:8005
+      # Shared secret for the Garmin/Fitbit sleep webhook; unset = webhook disabled
+      SLEEP_WEBHOOK_TOKEN: ${SLEEP_WEBHOOK_TOKEN:-}
     depends_on:
       - postgres
       - comms-api
@@ -418,6 +424,7 @@ services:
     ports:
       - "8009:8009"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       INFLUX_URL: http://influxdb:8086
     depends_on:
@@ -448,6 +455,7 @@ services:
     hostname: backend
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
+      <<: *imm-auth-env
       INFLUX_URL: http://influxdb:8086
       INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
       INFLUX_ORG: imm_org

@@ -12,10 +12,26 @@
   "ssoSessionMaxLifespan": 86400,
   "roles": {
     "realm": [
-      { "name": "crew", "description": "Habitat crew member (analog astronaut)" },
-      { "name": "commander", "description": "Mission commander (habitat side)" },
-      { "name": "flight_surgeon", "description": "Flight surgeon — access to crew medical, journal and psych data" },
-      { "name": "mcc_operator", "description": "Mission Control Centre operator" }
+      {
+        "name": "crew",
+        "description": "Habitat crew member (analog astronaut)"
+      },
+      {
+        "name": "commander",
+        "description": "Mission commander (habitat side)"
+      },
+      {
+        "name": "flight_surgeon",
+        "description": "Flight surgeon — access to crew medical, journal and psych data"
+      },
+      {
+        "name": "mcc_operator",
+        "description": "Mission Control Centre operator"
+      },
+      {
+        "name": "edge_device",
+        "description": "Edge node service account (RPi / Jetson): ECLSS event logs, RFID tool station, telemetry ingest"
+      }
     ]
   },
   "clients": [
@@ -31,8 +47,13 @@
       "frontchannelLogout": true,
       "rootUrl": "http://imm.local",
       "baseUrl": "/",
-      "redirectUris": ["http://imm.local/*", "http://localhost:3000/*"],
-      "webOrigins": ["+"],
+      "redirectUris": [
+        "http://imm.local/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "+"
@@ -49,6 +70,41 @@
             "id.token.claim": "false"
           }
         }
+      ]
+    },
+    {
+      "clientId": "imm-edge",
+      "name": "IMM OS edge nodes (client credentials)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${IMM_EDGE_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "imm-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "imm-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-imm-edge",
+      "enabled": true,
+      "serviceAccountClientId": "imm-edge",
+      "realmRoles": [
+        "edge_device"
       ]
     }
   ]
