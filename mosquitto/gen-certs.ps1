@@ -62,6 +62,7 @@ if (-not $openssl) {
     # tr strips CRLF in case the script was checked out with Windows line endings.
     # No double quotes in $cmd: Windows PowerShell 5.1 mangles them for native programs.
     $cmd = 'apk add --no-cache openssl >/dev/null && tr -d ''\015'' < gen-certs.sh > /tmp/gen-certs.sh && sh /tmp/gen-certs.sh $*'
+    $ErrorActionPreference = 'Continue'
     & docker run --rm -v "${here}:/work" -w /work alpine:3 sh -c $cmd gen-certs @argsList
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     exit 0
@@ -75,8 +76,14 @@ foreach ($n in $Names) {
 }
 
 function Invoke-OpenSsl([string[]]$OpenSslArgs) {
-    & $openssl @OpenSslArgs 2>$null
-    if ($LASTEXITCODE -ne 0) { throw "openssl $($OpenSslArgs[0]) failed (exit $LASTEXITCODE)" }
+    # openssl writes progress to stderr; Windows PowerShell 5.1 turns native stderr
+    # into terminating errors under ErrorActionPreference=Stop, so capture it instead.
+    $ErrorActionPreference = 'Continue'
+    $log = & $openssl @OpenSslArgs 2>&1 | ForEach-Object { "$_" }
+    if ($LASTEXITCODE -ne 0) {
+        $log | Write-Host
+        throw "openssl $($OpenSslArgs[0]) failed (exit $LASTEXITCODE)"
+    }
 }
 
 $ca = Join-Path $out 'ca'
