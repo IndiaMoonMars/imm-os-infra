@@ -480,6 +480,94 @@ CREATE INDEX IF NOT EXISTS idx_sleep_log_crew_day ON sleep_log(crew_id, mission_
 CREATE INDEX IF NOT EXISTS idx_mood_checkins_crew_day ON mood_checkins(crew_id, mission_day);
 CREATE INDEX IF NOT EXISTS idx_psych_survey_responses_crew ON psych_survey_responses(crew_id);
 
+-- ── Guide Phase 11: Inventory Management (services/inventory_api.py) ──
+-- Barcode-scanned habitat inventory: consumables, spares and tools.
+-- (tool_inventory / tool_checkout above are the separate EVA RFID station.)
+
+CREATE TABLE IF NOT EXISTS inventory_items (
+    id BIGSERIAL PRIMARY KEY,
+    barcode VARCHAR(128) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(50),                  -- e.g. 'spare', 'consumable', 'tool', 'medical', 'food'
+    physical_state VARCHAR(10) NOT NULL CHECK (physical_state IN ('solid', 'liquid', 'gas')),
+    unit VARCHAR(10) NOT NULL,             -- solid: units|kg|g  liquid: mL|L  gas: bar|kPa
+    quantity DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    min_quantity DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (min_quantity >= 0),  -- low-stock threshold
+    location VARCHAR(100),
+    is_tool BOOLEAN NOT NULL DEFAULT FALSE, -- tools can be checked out / in
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (physical_state = 'solid'  AND unit IN ('units', 'kg', 'g')) OR
+        (physical_state = 'liquid' AND unit IN ('mL', 'L')) OR
+        (physical_state = 'gas'    AND unit IN ('bar', 'kPa'))
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_items_barcode ON inventory_items(barcode);
+
+-- Every stock change (adjustments, repairs) for audit
+CREATE TABLE IF NOT EXISTS inventory_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+    delta DOUBLE PRECISION NOT NULL,
+    quantity_after DOUBLE PRECISION NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    repair_id BIGINT,
+    actor VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_transactions_item ON inventory_transactions(item_id, created_at);
+
+CREATE TABLE IF NOT EXISTS tool_checkouts (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+    crew_id VARCHAR(100) NOT NULL,
+    activity VARCHAR(100) NOT NULL,        -- e.g. 'EVA-03', 'Lab maintenance'
+    checked_out_by VARCHAR(100) NOT NULL,  -- user or edge scanner station
+    checked_out_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    checked_in_at TIMESTAMP WITH TIME ZONE,
+    checked_in_by VARCHAR(100),
+    duration_seconds DOUBLE PRECISION
+);
+-- At most one open checkout per tool
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_checkouts_open ON tool_checkouts(item_id) WHERE checked_in_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tool_checkouts_crew ON tool_checkouts(crew_id, checked_out_at);
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id BIGSERIAL PRIMARY KEY,
+    occurred_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    zone VARCHAR(50) NOT NULL,
+    severity SMALLINT NOT NULL CHECK (severity BETWEEN 1 AND 5),
+    description TEXT NOT NULL,
+    immediate_action TEXT,
+    reported_by VARCHAR(100) NOT NULL,
+    photo_path TEXT,
+    photo_mime VARCHAR(50),
+    mission_day INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_time ON incidents(occurred_at);
+
+CREATE TABLE IF NOT EXISTS repairs (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT REFERENCES inventory_items(id) ON DELETE SET NULL,  -- repaired item, if inventoried
+    item_description VARCHAR(255) NOT NULL,
+    incident_id BIGINT REFERENCES incidents(id) ON DELETE SET NULL,
+    repair_minutes INTEGER NOT NULL CHECK (repair_minutes >= 0),
+    technician VARCHAR(100) NOT NULL,      -- logged-in user (from token)
+    signature VARCHAR(255) NOT NULL,       -- technician's typed sign-off
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS repair_parts (
+    id BIGSERIAL PRIMARY KEY,
+    repair_id BIGINT NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id),
+    quantity DOUBLE PRECISION NOT NULL CHECK (quantity > 0)
+);
+
 -- ── Phase 11: AI & Autonomous Operations ────────────────────────
 
 CREATE TABLE IF NOT EXISTS ai_insights (

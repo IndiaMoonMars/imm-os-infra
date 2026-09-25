@@ -330,6 +330,28 @@ services:
       - postgres
     restart: unless-stopped
 
+  inventory-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-inventory-api
+    command: ["uvicorn", "services.inventory_api:app", "--host", "0.0.0.0", "--port", "8010"]
+    ports:
+      - "8010:8010"
+    environment:
+      <<: *imm-auth-env
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      INCIDENT_MEDIA_DIR: /app/media/incidents
+    volumes:
+      - inventory_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   comms-api:
     build:
       context: ../imm-os-backend
@@ -548,3 +570,4 @@ volumes:
   kafka_data:
   redis_data:
   comms_media:
+  inventory_media:
