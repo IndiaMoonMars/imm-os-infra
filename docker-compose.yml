@@ -70,9 +70,12 @@ services:
       MQTT_INGEST_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
       MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
     ports:
-      - "1883:1883"
+      # TLS only on the LAN; plain 1883 stays on the docker network for services
+      - "8883:8883"
     volumes:
       - ./mosquitto/config:/mosquitto/config
+      # Created by mosquitto/gen-certs.sh (git-ignored)
+      - ./mosquitto/certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     healthcheck:

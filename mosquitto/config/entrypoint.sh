@@ -5,6 +5,7 @@ set -eu
 
 DATA_DIR="${MOSQUITTO_DATA_DIR:-/mosquitto/data}"
 CONF="${MOSQUITTO_CONF:-/mosquitto/config/mosquitto.conf}"
+CERT_SRC="${MOSQUITTO_CERT_DIR:-/mosquitto/certs}"
 PASSWD="$DATA_DIR/passwd"
 HEALTH_PW_FILE="$DATA_DIR/.health_pw"
 
@@ -19,7 +20,18 @@ for var in MQTT_EDGE_PASSWORD MQTT_ECLSS_PASSWORD MQTT_INGEST_PASSWORD MQTT_SIM_
     need "$var"
 done
 
+for f in ca.crt server.crt server.key; do
+    if [ ! -f "$CERT_SRC/$f" ]; then
+        echo "mosquitto entrypoint: $CERT_SRC/$f missing; run imm-os-infra/mosquitto/gen-certs.sh" >&2
+        exit 1
+    fi
+done
+
 umask 077
+# TLS material: private copy the broker (running as mosquitto) can read
+mkdir -p "$DATA_DIR/certs"
+cp "$CERT_SRC/ca.crt" "$CERT_SRC/server.crt" "$CERT_SRC/server.key" "$DATA_DIR/certs/"
+
 tmp="$PASSWD.tmp"
 rm -f "$tmp"
 touch "$tmp"
@@ -37,6 +49,7 @@ mv "$tmp" "$PASSWD"
 # The broker drops to the mosquitto user when started as root
 if id mosquitto >/dev/null 2>&1; then
     chown mosquitto "$PASSWD"
+    chown -R mosquitto "$DATA_DIR/certs"
 fi
 
 exec mosquitto -c "$CONF"
