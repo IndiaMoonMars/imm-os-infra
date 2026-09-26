@@ -2,8 +2,7 @@
 # IMM-OS Infrastructure — Ansible Site Playbook
 # Provisions Ubuntu 22.04 LTS on:
 #   - dev server (K3s + Docker)
-#   - RPi nodes (Docker only, for edge containers)
-#   - Jetson (Docker only, for AI edge)
+#   - Raspberry Pi nodes, including the Pi 5 compute/power node (Docker only, for edge containers)
 #
 # Usage:
 #   ansible-playbook site.yml -i inventory.ini --ask-become-pass

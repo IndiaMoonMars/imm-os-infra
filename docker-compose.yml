@@ -7,6 +7,14 @@
 #  App stubs: backend · frontend · openmct  (replaced in Phase 1)
 # ════════════════════════════════════════════════════════════════
 
+# Keycloak token verification + internal service-to-service auth,
+# merged into every service that checks tokens or calls another service
+x-imm-auth-env: &imm-auth-env
+  KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://imm.local/auth/realms/IndiaMoonMars}
+  KEYCLOAK_JWKS_URL: http://keycloak:8080/auth/realms/IndiaMoonMars/protocol/openid-connect/certs
+  KEYCLOAK_AUDIENCE: imm-api
+  IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+
 services:
 
   # ── Data stores ────────────────────────────────────────────────
@@ -54,14 +62,24 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0
     container_name: imm-mosquitto
+    # Builds the hashed password file from the env below, then starts the broker
+    entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      MQTT_EDGE_PASSWORD: ${MQTT_EDGE_PASSWORD:?set MQTT_EDGE_PASSWORD in .env}
+      MQTT_ECLSS_PASSWORD: ${MQTT_ECLSS_PASSWORD:?set MQTT_ECLSS_PASSWORD in .env}
+      MQTT_INGEST_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
+      MQTT_SIM_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
     ports:
-      - "1883:1883"
+      # TLS only on the LAN; plain 1883 stays on the docker network for services
+      - "8883:8883"
     volumes:
       - ./mosquitto/config:/mosquitto/config
+      # Created by mosquitto/gen-certs.sh (git-ignored)
+      - ./mosquitto/certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t health -m ping || exit 1"]
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -u imm-health -P \"$$(cat /mosquitto/data/.health_pw)\" -t health -m ping || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -126,7 +144,10 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:23.0
     container_name: imm-keycloak
-    command: start-dev --http-relative-path=/auth
+    command: start-dev --http-relative-path=/auth --import-realm
+    volumes:
+      # Realm, roles and clients; imported only if the realm does not exist yet
+      - ./keycloak/import:/opt/keycloak/data/import:ro
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-changeme}
@@ -134,20 +155,24 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/imm_db
       KC_DB_USERNAME: ${POSTGRES_USER:-admin}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # Serves /auth/health/ready, used by the healthcheck below
+      KC_HEALTH_ENABLED: "true"
+      # Substituted into the imm-edge client secret at realm import; required
+      IMM_EDGE_CLIENT_SECRET: ${IMM_EDGE_CLIENT_SECRET:?set IMM_EDGE_CLIENT_SECRET in .env (openssl rand -hex 32)}
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /auth/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -Eq '\"status\" *: *\"UP\"'"]
       interval: 20s
       timeout: 10s
       retries: 10
       start_period: 60s
     restart: unless-stopped
 
-  # ── Sensor Simulator (replaces real RPi/Jetson until hardware arrives) ─
+  # ── Sensor Simulator (replaces real Raspberry Pi nodes until hardware arrives) ─
 
   sensor-sim:
     build:
@@ -157,7 +182,11 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-sim
+      MQTT_PASSWORD: ${MQTT_SIM_PASSWORD:?set MQTT_SIM_PASSWORD in .env}
       PUBLISH_INTERVAL_S: 5
+      # Sensors whose real hardware is online, e.g. node-rpi-01:bme280,node-rpi-01:scd40
+      DISABLED_SENSORS: ${SIM_DISABLED_SENSORS:-}
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -171,9 +200,13 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-worker
     command: ["python", "-u", "services/telemetry_worker.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-ingest
+      MQTT_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
       INFLUX_URL: http://influxdb:8086
       INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
       INFLUX_ORG: imm_org
@@ -194,7 +227,15 @@ services:
     container_name: imm-telemetry-ingest
     command: ["uvicorn", "services.telemetry_ingest:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
+      <<: *imm-auth-env
       KAFKA_BOOTSTRAP: kafka:29092
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
     depends_on:
       kafka:
         condition: service_started
@@ -206,6 +247,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-processor
     command: ["python", "-u", "services/telemetry_processor.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
@@ -224,9 +267,13 @@ services:
       dockerfile: Dockerfile
     container_name: imm-mqtt-kafka-bridge
     command: ["python", "-u", "services/mqtt_to_kafka_bridge.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+      MQTT_USERNAME: imm-ingest
+      MQTT_PASSWORD: ${MQTT_INGEST_PASSWORD:?set MQTT_INGEST_PASSWORD in .env}
       KAFKA_BOOTSTRAP: kafka:29092
     depends_on:
       mosquitto:
@@ -235,15 +282,39 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # Checks every raw reading against the shared schema:
+  # telemetry.raw → telemetry.validated (or telemetry.deadletter with the reason)
+  telemetry-validator:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-telemetry-validator
+    command: ["python", "-u", "-m", "services.telemetry_validator"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
+    environment:
+      KAFKA_BOOTSTRAP: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
   time-service:
     build:
       context: ../imm-os-backend
       dockerfile: Dockerfile
     container_name: imm-time-service
     command: ["uvicorn", "services.time_service.api:app", "--host", "0.0.0.0", "--port", "8002"]
+    healthcheck:   # the image default probes :8000; this service listens on 8002
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8002/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8002:8002"
     environment:
+      <<: *imm-auth-env
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - redis
@@ -255,8 +326,29 @@ services:
       dockerfile: Dockerfile
     container_name: imm-eclss-api
     command: ["uvicorn", "services.eclss_api:app", "--host", "0.0.0.0", "--port", "8003"]
+    healthcheck:   # the image default probes :8000; this service listens on 8003
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8003/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8003:8003"
+    environment:
+      <<: *imm-auth-env
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: imm-eclss
+      MQTT_PASSWORD: ${MQTT_ECLSS_PASSWORD:?set MQTT_ECLSS_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
     restart: unless-stopped
 
   eva-api:
@@ -265,9 +357,16 @@ services:
       dockerfile: Dockerfile
     container_name: imm-eva-api
     command: ["uvicorn", "services.eva_api:app", "--host", "0.0.0.0", "--port", "8004"]
+    healthcheck:   # the image default probes :8000; this service listens on 8004
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8004/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8004:8004"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -276,15 +375,50 @@ services:
       - postgres
     restart: unless-stopped
 
+  inventory-api:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-inventory-api
+    command: ["uvicorn", "services.inventory_api:app", "--host", "0.0.0.0", "--port", "8010"]
+    healthcheck:   # the image default probes :8000; this service listens on 8010
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8010/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    ports:
+      - "8010:8010"
+    environment:
+      <<: *imm-auth-env
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      INCIDENT_MEDIA_DIR: /app/media/incidents
+    volumes:
+      - inventory_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   comms-api:
     build:
       context: ../imm-os-backend
       dockerfile: Dockerfile
     container_name: imm-comms-api
     command: ["uvicorn", "services.comms_api:app", "--host", "0.0.0.0", "--port", "8005"]
+    healthcheck:   # the image default probes :8000; this service listens on 8005
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8005/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8005:8005"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -306,9 +440,16 @@ services:
       dockerfile: Dockerfile
     container_name: imm-scheduling-api
     command: ["uvicorn", "services.scheduling_api:app", "--host", "0.0.0.0", "--port", "8006"]
+    healthcheck:   # the image default probes :8000; this service listens on 8006
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8006/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8006:8006"
     environment:
+      <<: *imm-auth-env
       POSTGRES_HOST: postgres
       POSTGRES_USER: ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -327,9 +468,16 @@ services:
       dockerfile: Dockerfile
     container_name: imm-medical-api
     command: ["uvicorn", "services.medical_api:app", "--host", "0.0.0.0", "--port", "8007"]
+    healthcheck:   # the image default probes :8000; this service listens on 8007
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8007/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8007:8007"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       COMMS_URL: http://comms-api:8005
     depends_on:
@@ -343,11 +491,20 @@ services:
       dockerfile: Dockerfile
     container_name: imm-psych-api
     command: ["uvicorn", "services.psychology_api:app", "--host", "0.0.0.0", "--port", "8008"]
+    healthcheck:   # the image default probes :8000; this service listens on 8008
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8008/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8008:8008"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       COMMS_URL: http://comms-api:8005
+      # Shared secret for the Garmin/Fitbit sleep webhook; unset = webhook disabled
+      SLEEP_WEBHOOK_TOKEN: ${SLEEP_WEBHOOK_TOKEN:-}
     depends_on:
       - postgres
       - comms-api
@@ -359,6 +516,8 @@ services:
       dockerfile: Dockerfile
     container_name: imm-ai-processor
     command: ["python", "services/ai_processor.py"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
@@ -379,9 +538,16 @@ services:
       dockerfile: Dockerfile
     container_name: imm-mission-assistant
     command: ["uvicorn", "services.mission_assistant_api:app", "--host", "0.0.0.0", "--port", "8009"]
+    healthcheck:   # the image default probes :8000; this service listens on 8009
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8009/api/v1/astra/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     ports:
       - "8009:8009"
     environment:
+      <<: *imm-auth-env
       DATABASE_URL: postgresql://imm_user:imm_pass@postgres:5432/imm_db
       INFLUX_URL: http://influxdb:8086
     depends_on:
@@ -394,8 +560,11 @@ services:
       context: ../imm-os-backend
       dockerfile: Dockerfile
     container_name: imm-auto-control
-    command: ["python", "services/auto_control_service.py"]
+    command: ["python", "-m", "services.auto_control_service"]
+    healthcheck:   # background worker without an HTTP port
+      disable: true
     environment:
+      <<: *imm-auth-env
       ECLSS_URL: http://eclss-api:8003
       POSTGRES_HOST: postgres
     depends_on:
@@ -404,10 +573,19 @@ services:
     restart: unless-stopped
 
   backend:
-    image: traefik/whoami
-    container_name: imm-backend-stub
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-backend
     hostname: backend
-    command: --port=8080
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *imm-auth-env
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+    depends_on:
+      - influxdb
     restart: unless-stopped
 
   frontend:
@@ -439,6 +617,7 @@ services:
       - ./nginx/conf.d:/etc/nginx/conf.d
     depends_on:
       - backend
+      - telemetry-ingest
       - frontend
       - openmct
       - keycloak
@@ -476,3 +655,4 @@ volumes:
   kafka_data:
   redis_data:
   comms_media:
+  inventory_media:

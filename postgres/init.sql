@@ -96,6 +96,50 @@ CREATE INDEX IF NOT EXISTS idx_eva_plans_status ON eva_plans(status);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_tag ON tool_checkout(rfid_tag);
 CREATE INDEX IF NOT EXISTS idx_tool_checkout_eva ON tool_checkout(eva_plan_id);
 
+-- ── Phase 5: ECLSS ────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS eclss_lighting_state (
+    zone VARCHAR(50) PRIMARY KEY,
+    brightness SMALLINT NOT NULL CHECK (brightness BETWEEN 0 AND 100),
+    kelvin SMALLINT NOT NULL CHECK (kelvin BETWEEN 2000 AND 6500),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS waste_events (
+    id BIGSERIAL PRIMARY KEY,
+    weight_kg DOUBLE PRECISION NOT NULL,
+    rfid_tag VARCHAR(100) NOT NULL,
+    container VARCHAR(100) NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shower_events (
+    id BIGSERIAL PRIMARY KEY,
+    duration_seconds DOUBLE PRECISION NOT NULL,
+    estimated_liters DOUBLE PRECISION NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS water_flow_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_ml DOUBLE PRECISION NOT NULL,
+    daily_total_ml DOUBLE PRECISION NOT NULL,
+    source VARCHAR(100) NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS biolab_readings (
+    id BIGSERIAL PRIMARY KEY,
+    ph_level DOUBLE PRECISION NOT NULL,
+    water_temp_c DOUBLE PRECISION NOT NULL,
+    recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_waste_events_time ON waste_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_shower_events_time ON shower_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_water_flow_events_time ON water_flow_events(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_biolab_readings_time ON biolab_readings(recorded_at);
+
 -- ── Phase 7: Crew Communications ──────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -261,12 +305,16 @@ CREATE INDEX IF NOT EXISTS idx_procedure_runs_status ON procedure_runs(status);
 CREATE INDEX IF NOT EXISTS idx_milestones_date ON milestones(target_date);
 
 -- ── Phase 9: Medical & Health ─────────────────────────────────────
+-- Column names/types follow services/medical_api.py (imm-os-backend).
 
 CREATE TABLE IF NOT EXISTS medical_readings (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
-    type VARCHAR(50) NOT NULL, -- 'hr', 'bp', 'spo2', 'glucose', 'temp', 'weight', 'ecg'
-    value JSONB NOT NULL,
+    reading_type VARCHAR(50) NOT NULL, -- 'hr', 'bp_sys', 'bp_dia', 'spo2', 'glucose', 'temp', 'weight', 'ecg_bpm'
+    value DOUBLE PRECISION NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    device VARCHAR(100) DEFAULT 'manual',
+    notes TEXT,
     mission_day INTEGER DEFAULT 1,
     recorded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -274,30 +322,51 @@ CREATE TABLE IF NOT EXISTS medical_readings (
 CREATE TABLE IF NOT EXISTS food_items (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) UNIQUE NOT NULL,
-    calories_per_100g NUMERIC NOT NULL,
-    protein_g NUMERIC NOT NULL,
-    carbs_g NUMERIC NOT NULL,
-    fat_g NUMERIC NOT NULL,
-    expiry_days INTEGER DEFAULT 365
+    calories INTEGER NOT NULL,          -- per 100 g
+    protein_g DOUBLE PRECISION NOT NULL,
+    carb_g DOUBLE PRECISION NOT NULL,
+    fat_g DOUBLE PRECISION NOT NULL,
+    category VARCHAR(50)
 );
 
 CREATE TABLE IF NOT EXISTS food_log (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
     food_item_id INTEGER REFERENCES food_items(id),
-    name_override VARCHAR(255),
-    quantity_g NUMERIC NOT NULL,
+    meal_name VARCHAR(255),
+    meal_type VARCHAR(50) DEFAULT 'meal',
+    calories INTEGER DEFAULT 0,
+    protein_g DOUBLE PRECISION DEFAULT 0,
+    carb_g DOUBLE PRECISION DEFAULT 0,
+    fat_g DOUBLE PRECISION DEFAULT 0,
+    quantity_g DOUBLE PRECISION DEFAULT 100,
     mission_day INTEGER DEFAULT 1,
     logged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS food_stock (
+    id BIGSERIAL PRIMARY KEY,
+    item_name VARCHAR(255) NOT NULL,
+    quantity DOUBLE PRECISION NOT NULL,
+    unit VARCHAR(20) DEFAULT 'kg',
+    expiry_date DATE,
+    location VARCHAR(100) DEFAULT 'galley',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS medication_log (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
-    medication_name VARCHAR(255) NOT NULL,
-    dosage VARCHAR(100),
+    drug_name VARCHAR(255) NOT NULL,
+    dose_mg DOUBLE PRECISION,
+    dose_unit VARCHAR(20) DEFAULT 'mg',
+    frequency VARCHAR(100),
+    stock_count INTEGER DEFAULT 0,
+    expiry_date DATE,
+    notes TEXT,
     mission_day INTEGER DEFAULT 1,
-    taken_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    last_taken_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS medical_evaluations (
@@ -313,17 +382,23 @@ CREATE TABLE IF NOT EXISTS medical_evaluations (
 CREATE TABLE IF NOT EXISTS workout_log (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
-    exercise_type VARCHAR(100),
-    duration_minutes INTEGER,
-    intensity_score INTEGER CHECK (intensity_score BETWEEN 1 AND 10),
+    exercise_type VARCHAR(100) NOT NULL,
+    duration_min INTEGER NOT NULL,
+    intensity VARCHAR(20) DEFAULT 'moderate',
+    avg_hr INTEGER,
+    max_hr INTEGER,
+    calories_burned INTEGER,
+    hr_data JSONB DEFAULT '[]',
     mission_day INTEGER DEFAULT 1,
-    logged_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS questionnaire_templates (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL, -- e.g. 'NASA-TLX', 'PSQI'
-    structure JSONB NOT NULL
+    name VARCHAR(255) UNIQUE NOT NULL, -- e.g. 'NASA_TLX', 'PSQI', 'GHQ_12'
+    description TEXT,
+    questions JSONB NOT NULL,
+    scoring_rules JSONB NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS questionnaire_responses (
@@ -331,20 +406,32 @@ CREATE TABLE IF NOT EXISTS questionnaire_responses (
     template_id INTEGER REFERENCES questionnaire_templates(id),
     crew_id VARCHAR(100) NOT NULL,
     responses JSONB NOT NULL,
-    computed_score NUMERIC,
+    total_score DOUBLE PRECISION,
+    subscores JSONB DEFAULT '{}',
     mission_day INTEGER DEFAULT 1,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    completed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_food_log_crew_day ON food_log(crew_id, mission_day);
+CREATE INDEX IF NOT EXISTS idx_medication_log_crew ON medication_log(crew_id);
+CREATE INDEX IF NOT EXISTS idx_workout_log_crew_time ON workout_log(crew_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_questionnaire_responses_crew ON questionnaire_responses(crew_id);
+
 -- ── Phase 10: Psychology & Sociodynamics ────────────────────────
+-- Column names/types follow services/psychology_api.py (imm-os-backend).
 
 CREATE TABLE IF NOT EXISTS sleep_log (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
-    onset_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    wake_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    duration_minutes INTEGER,
-    quality_score INTEGER CHECK (quality_score BETWEEN 1 AND 10),
+    sleep_onset TIMESTAMP WITH TIME ZONE,   -- NULL for wearable webhook rows
+    wake_time TIMESTAMP WITH TIME ZONE,
+    duration_min INTEGER,
+    quality_score INTEGER,
+    source VARCHAR(50) DEFAULT 'manual',    -- 'manual', 'webhook', device name
+    awakenings INTEGER DEFAULT 0,
+    rem_min INTEGER DEFAULT 0,
+    deep_min INTEGER DEFAULT 0,
+    hr_avg INTEGER,
     mission_day INTEGER DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -352,11 +439,31 @@ CREATE TABLE IF NOT EXISTS sleep_log (
 CREATE TABLE IF NOT EXISTS mood_checkins (
     id BIGSERIAL PRIMARY KEY,
     crew_id VARCHAR(100) NOT NULL,
-    valence INTEGER NOT NULL CHECK (valence BETWEEN 1 AND 5), -- 1: Sad, 5: Happy
-    arousal INTEGER NOT NULL CHECK (arousal BETWEEN 1 AND 5), -- 1: Low, 5: High
-    tags TEXT[] DEFAULT '{}',
+    period VARCHAR(20) NOT NULL,            -- 'morning' | 'evening'
+    score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+    note TEXT,
     mission_day INTEGER DEFAULT 1,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    checked_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS psych_survey_templates (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,      -- e.g. 'PANAS', 'IES_R'
+    description TEXT,
+    schedule_days INTEGER DEFAULT 7,
+    questions JSONB NOT NULL,
+    scoring_rules JSONB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS psych_survey_responses (
+    id BIGSERIAL PRIMARY KEY,
+    template_id INTEGER REFERENCES psych_survey_templates(id),
+    crew_id VARCHAR(100) NOT NULL,
+    responses JSONB NOT NULL,
+    total_score DOUBLE PRECISION,
+    subscores JSONB DEFAULT '{}',
+    mission_day INTEGER DEFAULT 1,
+    completed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS sociogram_ratings (
@@ -367,6 +474,98 @@ CREATE TABLE IF NOT EXISTS sociogram_ratings (
     mission_day INTEGER DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (rater_id, ratee_id, mission_day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sleep_log_crew_day ON sleep_log(crew_id, mission_day);
+CREATE INDEX IF NOT EXISTS idx_mood_checkins_crew_day ON mood_checkins(crew_id, mission_day);
+CREATE INDEX IF NOT EXISTS idx_psych_survey_responses_crew ON psych_survey_responses(crew_id);
+
+-- ── Guide Phase 11: Inventory Management (services/inventory_api.py) ──
+-- Barcode-scanned habitat inventory: consumables, spares and tools.
+-- (tool_inventory / tool_checkout above are the separate EVA RFID station.)
+
+CREATE TABLE IF NOT EXISTS inventory_items (
+    id BIGSERIAL PRIMARY KEY,
+    barcode VARCHAR(128) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(50),                  -- e.g. 'spare', 'consumable', 'tool', 'medical', 'food'
+    physical_state VARCHAR(10) NOT NULL CHECK (physical_state IN ('solid', 'liquid', 'gas')),
+    unit VARCHAR(10) NOT NULL,             -- solid: units|kg|g  liquid: mL|L  gas: bar|kPa
+    quantity DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+    min_quantity DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (min_quantity >= 0),  -- low-stock threshold
+    location VARCHAR(100),
+    is_tool BOOLEAN NOT NULL DEFAULT FALSE, -- tools can be checked out / in
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (physical_state = 'solid'  AND unit IN ('units', 'kg', 'g')) OR
+        (physical_state = 'liquid' AND unit IN ('mL', 'L')) OR
+        (physical_state = 'gas'    AND unit IN ('bar', 'kPa'))
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_items_barcode ON inventory_items(barcode);
+
+-- Every stock change (adjustments, repairs) for audit
+CREATE TABLE IF NOT EXISTS inventory_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+    delta DOUBLE PRECISION NOT NULL,
+    quantity_after DOUBLE PRECISION NOT NULL,
+    reason VARCHAR(255) NOT NULL,
+    repair_id BIGINT,
+    actor VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_transactions_item ON inventory_transactions(item_id, created_at);
+
+CREATE TABLE IF NOT EXISTS tool_checkouts (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+    crew_id VARCHAR(100) NOT NULL,
+    activity VARCHAR(100) NOT NULL,        -- e.g. 'EVA-03', 'Lab maintenance'
+    checked_out_by VARCHAR(100) NOT NULL,  -- user or edge scanner station
+    checked_out_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    checked_in_at TIMESTAMP WITH TIME ZONE,
+    checked_in_by VARCHAR(100),
+    duration_seconds DOUBLE PRECISION
+);
+-- At most one open checkout per tool
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_checkouts_open ON tool_checkouts(item_id) WHERE checked_in_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tool_checkouts_crew ON tool_checkouts(crew_id, checked_out_at);
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id BIGSERIAL PRIMARY KEY,
+    occurred_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    zone VARCHAR(50) NOT NULL,
+    severity SMALLINT NOT NULL CHECK (severity BETWEEN 1 AND 5),
+    description TEXT NOT NULL,
+    immediate_action TEXT,
+    reported_by VARCHAR(100) NOT NULL,
+    photo_path TEXT,
+    photo_mime VARCHAR(50),
+    mission_day INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_time ON incidents(occurred_at);
+
+CREATE TABLE IF NOT EXISTS repairs (
+    id BIGSERIAL PRIMARY KEY,
+    item_id BIGINT REFERENCES inventory_items(id) ON DELETE SET NULL,  -- repaired item, if inventoried
+    item_description VARCHAR(255) NOT NULL,
+    incident_id BIGINT REFERENCES incidents(id) ON DELETE SET NULL,
+    repair_minutes INTEGER NOT NULL CHECK (repair_minutes >= 0),
+    technician VARCHAR(100) NOT NULL,      -- logged-in user (from token)
+    signature VARCHAR(255) NOT NULL,       -- technician's typed sign-off
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS repair_parts (
+    id BIGSERIAL PRIMARY KEY,
+    repair_id BIGINT NOT NULL REFERENCES repairs(id) ON DELETE CASCADE,
+    item_id BIGINT NOT NULL REFERENCES inventory_items(id),
+    quantity DOUBLE PRECISION NOT NULL CHECK (quantity > 0)
 );
 
 -- ── Phase 11: AI & Autonomous Operations ────────────────────────
