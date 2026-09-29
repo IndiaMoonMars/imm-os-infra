@@ -93,6 +93,50 @@
       ],
       "title": "Heart Rate (BPM)",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "InfluxDB"
+      },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "none", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.5 }, { "color": "orange", "value": 2.5 }, { "color": "red", "value": 25 }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "InfluxDB" },
+          "query": "from(bucket: \"habitat_sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"geiger\")\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> filter(fn: (r) => r[\"metric\"] == \"usv_h\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "External Radiation Dose Rate (µSv/h)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "InfluxDB"
+      },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" }, "unit": "none" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "datasource": { "type": "influxdb", "uid": "InfluxDB" },
+          "query": "from(bucket: \"habitat_sensors\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"gnss\")\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> filter(fn: (r) => r[\"metric\"] == \"sats\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "title": "GNSS Satellites in Use",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",
