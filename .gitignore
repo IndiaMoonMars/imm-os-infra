@@ -15,6 +15,10 @@ mosquitto/data/
 mosquitto/log/
 mosquitto/certs/
 
+# ── Backups (scripts/backup, BACKUP_DIR): database contents, never commit ──
+backups/
+vv/reports/
+
 # ── Terraform ────────────────────────────────────────────────────
 .terraform/
 .terraform.lock.hcl

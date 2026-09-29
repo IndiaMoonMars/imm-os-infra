@@ -15,6 +15,23 @@ x-imm-auth-env: &imm-auth-env
   KEYCLOAK_AUDIENCE: imm-api
   IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
 
+# Container logs rotate (json-file, 5 × 10 MB per container) so a chatty service can't
+# fill the MCC disk during a long mission.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# Background workers (no HTTP port) touch a heartbeat file from their main loop
+# (imm-os-backend services/heartbeat.py); older than 60 s = hung → unhealthy.
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "python", "-m", "services.heartbeat", "60"]
+  interval: 15s
+  timeout: 5s
+  retries: 3
+  start_period: 60s
+
 services:
 
   # ── Data stores ────────────────────────────────────────────────
@@ -36,6 +53,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   influxdb:
@@ -57,6 +76,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   mosquitto:
@@ -83,6 +104,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   redis:
@@ -92,6 +115,13 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Message queue ──────────────────────────────────────────────
@@ -112,6 +142,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   kafka:
@@ -137,6 +169,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Auth ───────────────────────────────────────────────────────
@@ -170,6 +204,8 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Sensor Simulator (replaces real Raspberry Pi nodes until hardware arrives) ─
@@ -190,6 +226,7 @@ services:
     depends_on:
       mosquitto:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Telemetry Worker (MQTT → InfluxDB bridge) ──────────────────
@@ -216,6 +253,7 @@ services:
         condition: service_healthy
       influxdb:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   # ── Application stubs (Phase 0 — replaced by real images in Phase 1) ──
@@ -239,6 +277,8 @@ services:
     depends_on:
       kafka:
         condition: service_started
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   telemetry-processor:
@@ -247,8 +287,7 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-processor
     command: ["python", "-u", "services/telemetry_processor.py"]
-    healthcheck:   # background worker without an HTTP port
-      disable: true
+    healthcheck: *worker-healthcheck
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
       INFLUX_URL: http://influxdb:8086
@@ -259,6 +298,8 @@ services:
         condition: service_started
       influxdb:
         condition: service_healthy
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   mqtt-kafka-bridge:
@@ -267,8 +308,7 @@ services:
       dockerfile: Dockerfile
     container_name: imm-mqtt-kafka-bridge
     command: ["python", "-u", "services/mqtt_to_kafka_bridge.py"]
-    healthcheck:   # background worker without an HTTP port
-      disable: true
+    healthcheck: *worker-healthcheck
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -280,6 +320,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   # Checks every raw reading against the shared schema:
@@ -290,13 +332,14 @@ services:
       dockerfile: Dockerfile
     container_name: imm-telemetry-validator
     command: ["python", "-u", "-m", "services.telemetry_validator"]
-    healthcheck:   # background worker without an HTTP port
-      disable: true
+    healthcheck: *worker-healthcheck
     environment:
       KAFKA_BOOTSTRAP: kafka:29092
     depends_on:
       kafka:
         condition: service_healthy
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   time-service:
@@ -318,6 +361,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - redis
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   eclss-api:
@@ -349,6 +394,8 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_started
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   eva-api:
@@ -373,6 +420,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-imm_db}
     depends_on:
       - postgres
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   inventory-api:
@@ -401,6 +450,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   comms-api:
@@ -432,6 +483,8 @@ services:
       - postgres
       - time-service
       - eclss-api
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   scheduling-api:
@@ -460,6 +513,8 @@ services:
       - postgres
       - time-service
       - comms-api
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   medical-api:
@@ -483,6 +538,8 @@ services:
     depends_on:
       - postgres
       - comms-api
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   psych-api:
@@ -508,6 +565,8 @@ services:
     depends_on:
       - postgres
       - comms-api
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   ai-processor:
@@ -530,6 +589,7 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
   mission-assistant:
@@ -553,6 +613,8 @@ services:
     depends_on:
       - postgres
       - influxdb
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   auto-control:
@@ -570,6 +632,7 @@ services:
     depends_on:
       - postgres
       - eclss-api
+    logging: *default-logging
     restart: unless-stopped
 
   backend:
@@ -586,6 +649,8 @@ services:
       INFLUX_ORG: imm_org
     depends_on:
       - influxdb
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   frontend:
@@ -595,6 +660,7 @@ services:
     container_name: imm-frontend
     ports:
       - "3000:3000"
+    logging: *default-logging
     restart: unless-stopped
 
   openmct:
@@ -604,7 +670,158 @@ services:
     container_name: imm-openmct
     ports:
       - "8082:8080"
+    logging: *default-logging
     restart: unless-stopped
+
+  # ── Health monitoring, recovery and backups (FDIR) ────────────
+  # imm-os-docs/fdir-strategy.md, backup-and-dr.md
+
+  # Fault detection, isolation and recovery at the MCC: stream health and data
+  # quality, redundancy/failover, alarms (raise/ack/clear), EVA loss of signal,
+  # subsystem GO/NO-GO and mission mode. API behind nginx at /api/health/.
+  health-monitor:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-health-monitor
+    command: ["uvicorn", "services.health_monitor:app", "--host", "0.0.0.0", "--port", "8011"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8011/health').raise_for_status()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    environment:
+      <<: *imm-auth-env
+      KAFKA_BOOTSTRAP: kafka:29092
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      # EVA loss-of-signal thresholds (s): LOS warning, LOS, contingency, one stream lost
+      EVA_LOS_WARN_S: ${EVA_LOS_WARN_S:-10}
+      EVA_LOS_S: ${EVA_LOS_S:-30}
+      EVA_LOS_CONTINGENCY_S: ${EVA_LOS_CONTINGENCY_S:-120}
+      EVA_PARTIAL_LOSS_S: ${EVA_PARTIAL_LOSS_S:-15}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    labels: [imm.autoheal=true]
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Restarts containers that Docker reports unhealthy (hung, not crashed: a crash is
+  # already handled by restart: unless-stopped). Only containers labelled
+  # imm.autoheal=true; at most 3 restarts in 15 min, then it stops and raises an
+  # alarm for a person. Needs the Docker socket (it only lists and restarts).
+  autoheal:
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-autoheal
+    command: ["python", "-u", "-m", "services.autoheal"]
+    user: root                          # to use the Docker socket
+    healthcheck: *worker-healthcheck
+    environment:
+      IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+      AUTOHEAL_MAX_RESTARTS: ${AUTOHEAL_MAX_RESTARTS:-3}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Scheduled backups into BACKUP_DIR (default ./backups on the MCC PC; point it at an
+  # external drive for a copy that survives the PC's disk). Restore and the
+  # non-destructive DR drill: scripts/restore.*, scripts/dr-drill.*.
+  backup-postgres:
+    image: postgres:15-alpine          # same major version as the database
+    container_name: imm-backup-postgres
+    entrypoint: ["/bin/sh", "/scripts/backup.sh", "postgres"]
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/backup.sh", "postgres", "check"]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+    environment:
+      PGHOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      BACKUP_INTERVAL_H: ${BACKUP_INTERVAL_H:-6}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels: [imm.autoheal=true]
+    logging: *default-logging
+    restart: unless-stopped
+
+  backup-influx:
+    image: influxdb:2.7-alpine         # for the influx CLI
+    container_name: imm-backup-influx
+    entrypoint: ["/bin/sh", "/scripts/backup.sh", "influx"]
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/scripts/backup.sh", "influx", "check"]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+    environment:
+      INFLUX_HOST: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+      BACKUP_INTERVAL_H: ${BACKUP_INTERVAL_H:-6}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+    volumes:
+      - ./scripts/backup:/scripts:ro
+      - ${BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    labels: [imm.autoheal=true]
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Mission readiness V&V (fault injection); only on demand:
+  #   docker compose --profile vv run --rm vv            (imm-os-infra/vv/README.md)
+  vv:
+    profiles: ["vv"]
+    build:
+      context: ../imm-os-backend
+      dockerfile: Dockerfile
+    container_name: imm-vv
+    command: ["python", "-u", "/vv/mission_readiness.py"]
+    user: root                          # Docker socket: stops/starts containers to inject faults
+    healthcheck:
+      disable: true
+    environment:
+      IMM_SERVICE_TOKEN: ${IMM_SERVICE_TOKEN:-change-me-internal-service-token}
+      # publishes as an edge node (a real, not simulated, test node: vv-node-01)
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: imm-edge
+      MQTT_PASSWORD: ${MQTT_EDGE_PASSWORD:?set MQTT_EDGE_PASSWORD in .env}
+      BACKUP_INTERVAL_H: ${BACKUP_INTERVAL_H:-6}
+      KAFKA_BOOTSTRAP: kafka:29092
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
+      INFLUX_ORG: imm_org
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+    volumes:
+      - ./vv:/vv
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${BACKUP_DIR:-./backups}:/backups
+    logging: *default-logging
 
   # ── Reverse proxy ──────────────────────────────────────────────
 
@@ -621,11 +838,14 @@ services:
       - frontend
       - openmct
       - keycloak
+      - health-monitor
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/nginx-health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
+    labels: [imm.autoheal=true]
+    logging: *default-logging
     restart: unless-stopped
 
   grafana:
@@ -643,6 +863,7 @@ services:
     depends_on:
       influxdb:
         condition: service_healthy
+    logging: *default-logging
     restart: unless-stopped
 
 volumes:

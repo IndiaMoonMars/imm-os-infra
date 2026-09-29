@@ -9,6 +9,8 @@ topic readwrite habitat/sensors/#
 topic readwrite habitat/eva/#
 topic write imm/habitat/#
 topic read habitat/control/#
+# component status for the health monitor (habitat/health/<node>/<component>)
+topic write habitat/health/#
 
 # ECLSS API: publishes lighting commands (retained) for the edge.
 user imm-eclss
@@ -19,6 +21,7 @@ user imm-ingest
 topic read habitat/sensors/#
 topic read habitat/eva/#
 topic read imm/habitat/#
+topic read habitat/health/#
 
 # Sensor simulator (development only). Publishes the same sensor topics as the
 # edge drivers; its readings are marked "simulated": true.
