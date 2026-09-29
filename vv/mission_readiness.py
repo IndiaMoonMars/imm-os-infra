@@ -598,11 +598,14 @@ def alm_restart(ctx: Ctx):
 @test("VV-INT-01", "End-to-end data integrity", "Every reading the broker acknowledged during the whole test, through "
       "every injected outage, is in InfluxDB exactly once, at its own time, with its exact value.")
 def int_all(ctx: Ctx):
-    time.sleep(20)                                             # let the last readings drain
+    cutoff = time.time()                                       # the node keeps publishing: check what was sent before now
+    time.sleep(20)                                             # ... after giving it time to drain
     ok, _ = wait_until(lambda: not ctx.pub.pending, 30, 1)
     pts = stored_points(ctx.t_start - 3600)
     missing, wrong, total = [], [], 0
     for r in ctx.pub.confirmed:
+        if r["timestamp"] >= cutoff and not r.get("delayed"):
+            continue
         s = ctx.pub.streams[r["stream"]]
         sensor = s.static.get("sensor")
         ms = int(round(r["timestamp"] * 1000))
