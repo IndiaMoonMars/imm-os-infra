@@ -17,6 +17,8 @@ mosquitto/certs/
 
 # ── Backups (scripts/backup, BACKUP_DIR): database contents, never commit ──
 backups/
+# ── Mission archive (MISSION_ARCHIVE_DIR): every sol's readings, never commit ──
+archive/
 vv/reports/
 
 # ── Terraform ────────────────────────────────────────────────────

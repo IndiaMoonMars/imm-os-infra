@@ -161,6 +161,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # 10 days: a whole 7-sol mission stays replayable from Kafka (default 7 days)
+      KAFKA_LOG_RETENTION_HOURS: 240
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
@@ -647,8 +649,18 @@ services:
       INFLUX_URL: http://influxdb:8086
       INFLUX_TOKEN: ${INFLUX_TOKEN:-imm-super-secret-token}
       INFLUX_ORG: imm_org
+      # mission record (/api/mission): missions and the mission log in Postgres; each finished
+      # sol archived to MISSION_ARCHIVE_DIR (point it at an external drive, e.g. D:/imm-archive)
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-imm_db}
+      MISSION_ARCHIVE_DIR: /archive
+    volumes:
+      - ${MISSION_ARCHIVE_DIR:-./archive}:/archive
     depends_on:
       - influxdb
+      - postgres
     labels: [imm.autoheal=true]
     logging: *default-logging
     restart: unless-stopped
